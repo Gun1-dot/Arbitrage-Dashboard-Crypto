@@ -30,20 +30,46 @@
   </table>
 
  <script>
-  async function fetchAllRekuPrices() {
+  async function fetchAllPrices() {
     try {
-      const res = await fetch('https://api.reku.id/v2/bidask');
-      const data = await res.json();
+      const [rekuRes, indodaxRes] = await Promise.all([
+        fetch('https://api.reku.id/v2/bidask'),
+        fetch('https://indodax.com/api/tickers')
+      ]);
+
+      const rekuData = await rekuRes.json();
+      const indodaxData = await indodaxRes.json();
 
       let html = '';
-      data.forEach(coin => {
+
+      rekuData.forEach(coin => {
+        const symbol = coin.code.toLowerCase() + '_idr';
+        const indodaxPrice = indodaxData.tickers[symbol]?.last
+          ? parseFloat(indodaxData.tickers[symbol].last)
+          : null;
+
+        const rekuPrice = parseFloat(coin.bid);
+        const rekuPriceDisplay = 'Rp ' + rekuPrice.toLocaleString();
+        const indodaxPriceDisplay = indodaxPrice ? 'Rp ' + indodaxPrice.toLocaleString() : '-';
+
+        let arbitrage = '-', gain = '-';
+        if (indodaxPrice) {
+          if (rekuPrice < indodaxPrice) {
+            arbitrage = 'Buy at Reku, Sell at Indodax';
+            gain = (((indodaxPrice - rekuPrice) / rekuPrice) * 100).toFixed(2) + '%';
+          } else if (indodaxPrice < rekuPrice) {
+            arbitrage = 'Buy at Indodax, Sell at Reku';
+            gain = (((rekuPrice - indodaxPrice) / indodaxPrice) * 100).toFixed(2) + '%';
+          }
+        }
+
         html += `
           <tr>
             <td>${coin.code}</td>
-            <td>Rp ${parseFloat(coin.bid).toLocaleString()}</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
+            <td>${rekuPriceDisplay}</td>
+            <td>${indodaxPriceDisplay}</td>
+            <td>${arbitrage}</td>
+            <td>${gain}</td>
           </tr>
         `;
       });
@@ -55,6 +81,6 @@
     }
   }
 
-  fetchAllRekuPrices();
-  setInterval(fetchAllRekuPrices, 15000);
+  fetchAllPrices();
+  setInterval(fetchAllPrices, 15000);
 </script>
