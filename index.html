@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,7 +28,11 @@
     </tbody>
   </table>
 
- <script>
+<script>
+  const BOT_TOKEN = "8106353501:AAHJDQDCBLZX4_iYBV0ubbBxyDlh503K08M";
+  const CHAT_ID = "273811623"; // 👈 Your actual Telegram chat ID
+  const SENT_ALERTS = new Set();
+
   async function fetchAllPrices() {
     try {
       const [rekuRes, indodaxRes] = await Promise.all([
@@ -53,13 +56,24 @@
         const indodaxPriceDisplay = indodaxPrice ? 'Rp ' + indodaxPrice.toLocaleString() : '-';
 
         let arbitrage = '-', gain = '-';
+
         if (indodaxPrice) {
-          if (rekuPrice < indodaxPrice) {
+          const diff = indodaxPrice - rekuPrice;
+          const percentGain = (Math.abs(diff) / Math.min(rekuPrice, indodaxPrice)) * 100;
+
+          if (diff > 0) {
             arbitrage = 'Buy at Reku, Sell at Indodax';
-            gain = (((indodaxPrice - rekuPrice) / rekuPrice) * 100).toFixed(2) + '%';
-          } else if (indodaxPrice < rekuPrice) {
+            gain = percentGain.toFixed(2) + '%';
+          } else if (diff < 0) {
             arbitrage = 'Buy at Indodax, Sell at Reku';
-            gain = (((rekuPrice - indodaxPrice) / indodaxPrice) * 100).toFixed(2) + '%';
+            gain = percentGain.toFixed(2) + '%';
+          }
+
+          // 🔔 Telegram alert if gain > 3%
+          if (percentGain > 3 && !SENT_ALERTS.has(coin.code)) {
+            SENT_ALERTS.add(coin.code);
+            const message = `⚡ ${coin.code} has ${percentGain.toFixed(2)}% arbitrage gain!\n${arbitrage}`;
+            fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(message)}`);
           }
         }
 
@@ -84,5 +98,5 @@
   fetchAllPrices();
   setInterval(fetchAllPrices, 15000);
 </script>
-Update title and heading for branding
-
+</body>
+</html>
