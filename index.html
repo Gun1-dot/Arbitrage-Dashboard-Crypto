@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Real Time Crypto Dashboard – Created by Gunawan Panjaitan</title>
   <style>
     body { font-family: Arial, sans-serif; text-align: center; padding: 30px; }
@@ -29,98 +29,88 @@
   </table>
 
 <script>
-  const BOT_TOKEN = '8106353501:AAHJDQDCBLZX4_iYBV0ubbBxyDlh503K08M';
-  const CHAT_ID = '273811623';
+const TELEGRAM_TOKEN = "8106353501:AAHJDQDCBLZX4_iYBV0ubbBxyDlh503K08M";
+const CHAT_ID = "273811623";
 
-  async function sendTelegramMessage(message) {
-    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: CHAT_ID,
-        text: message
-      })
-    });
-  }
+async function fetchAndDisplay() {
+  try {
+    const [rekuRes, indodaxRes] = await Promise.all([
+      fetch('https://api.reku.id/v2/bidask'),
+      fetch('https://indodax.com/api/tickers')
+    ]);
+    const rekuData = await rekuRes.json();
+    const indodaxData = await indodaxRes.json();
 
-  async function fetchAllPrices() {
-    try {
-      const [rekuRes, indodaxRes] = await Promise.all([
-        fetch('https://api.reku.id/v2/bidask'),
-        fetch('https://indodax.com/api/tickers')
-      ]);
+    let html = '';
+    let gainers = [];
 
-      const rekuData = await rekuRes.json();
-      const indodaxData = await indodaxRes.json();
+    rekuData.forEach(coin => {
+      const symbol = coin.code.toLowerCase() + '_idr';
+      const indodaxPrice = indodaxData.tickers[symbol]?.last
+        ? parseFloat(indodaxData.tickers[symbol].last)
+        : null;
+      const rekuPrice = parseFloat(coin.bid);
+      const rekuDisplay = 'Rp ' + rekuPrice.toLocaleString();
+      const indodaxDisplay = indodaxPrice ? 'Rp ' + indodaxPrice.toLocaleString() : '-';
 
-      let html = '';
-      let highGainCoins = [];
+      let arbitrage = '-', gain = '-';
+      if (indodaxPrice) {
+        const diff = indodaxPrice - rekuPrice;
+        const percentage = Math.abs((diff / Math.min(rekuPrice, indodaxPrice)) * 100).toFixed(2);
+        gain = percentage + '%';
 
-      rekuData.forEach(coin => {
-        const symbol = coin.code.toLowerCase() + '_idr';
-        const indodaxPrice = indodaxData.tickers[symbol]?.last
-          ? parseFloat(indodaxData.tickers[symbol].last)
-          : null;
-
-        const rekuPrice = parseFloat(coin.bid);
-        const rekuPriceDisplay = 'Rp ' + rekuPrice.toLocaleString();
-        const indodaxPriceDisplay = indodaxPrice ? 'Rp ' + indodaxPrice.toLocaleString() : '-';
-
-        let arbitrage = '-', gain = '-';
-        let gainValue = 0;
-
-        if (indodaxPrice) {
-          if (rekuPrice < indodaxPrice) {
-            arbitrage = 'Buy at Reku, Sell at Indodax';
-            gainValue = ((indodaxPrice - rekuPrice) / rekuPrice) * 100;
-            gain = gainValue.toFixed(2) + '%';
-          } else if (indodaxPrice < rekuPrice) {
-            arbitrage = 'Buy at Indodax, Sell at Reku';
-            gainValue = ((rekuPrice - indodaxPrice) / indodaxPrice) * 100;
-            gain = gainValue.toFixed(2) + '%';
-          }
+        if (rekuPrice < indodaxPrice) {
+          arbitrage = 'Buy at Reku, Sell at Indodax';
+        } else if (indodaxPrice < rekuPrice) {
+          arbitrage = 'Buy at Indodax, Sell at Reku';
         }
 
-        if (gainValue >= 3) {
-          highGainCoins.push({
-            code: coin.code,
-            rekuPriceDisplay,
-            indodaxPriceDisplay,
-            arbitrage,
-            gain: gainValue.toFixed(2)
-          });
-        }
-
-        html += `
-          <tr>
-            <td>${coin.code}</td>
-            <td>${rekuPriceDisplay}</td>
-            <td>${indodaxPriceDisplay}</td>
-            <td>${arbitrage}</td>
-            <td>${gain}</td>
-          </tr>
-        `;
-      });
-
-      document.getElementById('btc-data').innerHTML = html;
-
-      if (highGainCoins.length > 0) {
-        const sorted = highGainCoins.sort((a, b) => b.gain - a.gain).slice(0, 5);
-        let message = '🚨 Top 5 Arbitrage Gains:\n';
-        sorted.forEach((coin, i) => {
-          message += `\n${i + 1}. ${coin.code} | Gain: ${coin.gain}%\n${coin.arbitrage}\nReku: ${coin.rekuPriceDisplay}, Indodax: ${coin.indodaxPriceDisplay}\n`;
-        });
-        sendTelegramMessage(message);
+        gainers.push({ coin: coin.code, gain: parseFloat(percentage), arbitrage });
       }
 
-    } catch (err) {
-      console.error(err);
-      document.getElementById('btc-data').innerHTML = '<tr><td colspan="5">Error loading data</td></tr>';
-    }
-  }
+      html += `
+        <tr>
+          <td>${coin.code}</td>
+          <td>${rekuDisplay}</td>
+          <td>${indodaxDisplay}</td>
+          <td>${arbitrage}</td>
+          <td>${gain}</td>
+        </tr>
+      `;
+    });
 
-  fetchAllPrices();
-  setInterval(fetchAllPrices, 60000); // Run every 60 seconds
+    document.getElementById('btc-data').innerHTML = html;
+
+    // Send top 5 gainers with gain > 3%
+    const topGainers = gainers
+      .filter(g => g.gain > 3)
+      .sort((a, b) => b.gain - a.gain)
+      .slice(0, 5);
+
+    if (topGainers.length > 0) {
+      const message = topGainers.map(g =>
+        `🔥 ${g.coin}\nGain: ${g.gain.toFixed(2)}%\n${g.arbitrage}`
+      ).join('\n\n');
+      await sendTelegramAlert(`🚨 Top Arbitrage Gains Over 3%:\n\n${message}`);
+    }
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById('btc-data').innerHTML = '<tr><td colspan="5">Error loading data</td></tr>';
+  }
+}
+
+async function sendTelegramAlert(message) {
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+  await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: CHAT_ID, text: message })
+  });
+}
+
+fetchAndDisplay();
+setInterval(fetchAndDisplay, 60000); // every 60 seconds
 </script>
 </body>
 </html>
