@@ -6,7 +6,7 @@
   <title>Real Time Crypto Dashboard – Created by Gunawan Panjaitan</title>
   <style>
     body { font-family: Arial, sans-serif; text-align: center; padding: 30px; }
-    table { margin: 0 auto; border-collapse: collapse; width: 80%; }
+    table { margin: 0 auto; border-collapse: collapse; width: 90%; }
     th, td { border: 1px solid #ccc; padding: 10px; font-size: 18px; }
     th { background-color: #f4f4f4; }
   </style>
@@ -29,9 +29,19 @@
   </table>
 
 <script>
-  const BOT_TOKEN = "8106353501:AAHJDQDCBLZX4_iYBV0ubbBxyDlh503K08M";
-  const CHAT_ID = "273811623"; // 👈 Your actual Telegram chat ID
-  const SENT_ALERTS = new Set();
+  const BOT_TOKEN = '8106353501:AAHJDQDCBLZX4_iYBV0ubbBxyDlh503K08M';
+  const CHAT_ID = '273811623';
+
+  async function sendTelegramMessage(message) {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        text: message
+      })
+    });
+  }
 
   async function fetchAllPrices() {
     try {
@@ -44,6 +54,7 @@
       const indodaxData = await indodaxRes.json();
 
       let html = '';
+      let highGainCoins = [];
 
       rekuData.forEach(coin => {
         const symbol = coin.code.toLowerCase() + '_idr';
@@ -56,25 +67,28 @@
         const indodaxPriceDisplay = indodaxPrice ? 'Rp ' + indodaxPrice.toLocaleString() : '-';
 
         let arbitrage = '-', gain = '-';
+        let gainValue = 0;
 
         if (indodaxPrice) {
-          const diff = indodaxPrice - rekuPrice;
-          const percentGain = (Math.abs(diff) / Math.min(rekuPrice, indodaxPrice)) * 100;
-
-          if (diff > 0) {
+          if (rekuPrice < indodaxPrice) {
             arbitrage = 'Buy at Reku, Sell at Indodax';
-            gain = percentGain.toFixed(2) + '%';
-          } else if (diff < 0) {
+            gainValue = ((indodaxPrice - rekuPrice) / rekuPrice) * 100;
+            gain = gainValue.toFixed(2) + '%';
+          } else if (indodaxPrice < rekuPrice) {
             arbitrage = 'Buy at Indodax, Sell at Reku';
-            gain = percentGain.toFixed(2) + '%';
+            gainValue = ((rekuPrice - indodaxPrice) / indodaxPrice) * 100;
+            gain = gainValue.toFixed(2) + '%';
           }
+        }
 
-          // 🔔 Telegram alert if gain > 3%
-          if (percentGain > 3 && !SENT_ALERTS.has(coin.code)) {
-            SENT_ALERTS.add(coin.code);
-            const message = `⚡ ${coin.code} has ${percentGain.toFixed(2)}% arbitrage gain!\n${arbitrage}`;
-            fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(message)}`);
-          }
+        if (gainValue >= 3) {
+          highGainCoins.push({
+            code: coin.code,
+            rekuPriceDisplay,
+            indodaxPriceDisplay,
+            arbitrage,
+            gain: gainValue.toFixed(2)
+          });
         }
 
         html += `
@@ -89,6 +103,16 @@
       });
 
       document.getElementById('btc-data').innerHTML = html;
+
+      if (highGainCoins.length > 0) {
+        const sorted = highGainCoins.sort((a, b) => b.gain - a.gain).slice(0, 5);
+        let message = '🚨 Top 5 Arbitrage Gains:\n';
+        sorted.forEach((coin, i) => {
+          message += `\n${i + 1}. ${coin.code} | Gain: ${coin.gain}%\n${coin.arbitrage}\nReku: ${coin.rekuPriceDisplay}, Indodax: ${coin.indodaxPriceDisplay}\n`;
+        });
+        sendTelegramMessage(message);
+      }
+
     } catch (err) {
       console.error(err);
       document.getElementById('btc-data').innerHTML = '<tr><td colspan="5">Error loading data</td></tr>';
@@ -96,7 +120,7 @@
   }
 
   fetchAllPrices();
-  setInterval(fetchAllPrices, 15000);
+  setInterval(fetchAllPrices, 60000); // Run every 60 seconds
 </script>
 </body>
 </html>
