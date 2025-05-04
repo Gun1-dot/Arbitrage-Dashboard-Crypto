@@ -29,47 +29,34 @@
     </tbody>
   </table>
 
-  <script>
-    async function fetchPrices() {
-      try {
-        const [rekuRes, indodaxRes] = await Promise.all([
-          fetch('https://api.reku.id/v2/bidask'),
-          fetch('https://indodax.com/api/btc_idr/ticker')
-        ]);
+ <script>
+  async function fetchAllRekuPrices() {
+    try {
+      const res = await fetch('https://api.reku.id/v2/bidask');
+      const data = await res.json();
 
-        const rekuData = await rekuRes.json();
-        const indodaxData = await indodaxRes.json();
-
-        const btcReku = rekuData.find(item => item.code === 'BTC');
-        const rekuPrice = parseFloat(btcReku.bid);
-        const indodaxPrice = parseFloat(indodaxData.ticker.last);
-
-        let arbitrage, gain;
-        if (rekuPrice < indodaxPrice) {
-          arbitrage = 'Buy at Reku, Sell at Indodax';
-          gain = ((indodaxPrice - rekuPrice) / rekuPrice) * 100;
-        } else {
-          arbitrage = 'Buy at Indodax, Sell at Reku';
-          gain = ((rekuPrice - indodaxPrice) / indodaxPrice) * 100;
-        }
-
-        document.getElementById('btc-data').innerHTML = `
+      let html = '';
+      data.forEach(coin => {
+        html += `
           <tr>
-            <td>BTC</td>
-            <td>Rp ${rekuPrice.toLocaleString()}</td>
-            <td>Rp ${indodaxPrice.toLocaleString()}</td>
-            <td>${arbitrage}</td>
-            <td>${gain.toFixed(2)}%</td>
+            <td>${coin.code}</td>
+            <td>Rp ${parseFloat(coin.bid).toLocaleString()}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
           </tr>
         `;
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        document.getElementById('btc-data').innerHTML = '<tr><td colspan="5">Error loading data</td></tr>';
-      }
-    }
+      });
 
-    fetchPrices();
-    setInterval(fetchPrices, 15000); // update every 15 seconds
-  </script>
-</body>
-</html>
+      document.getElementById('btc-data').innerHTML = html;
+    } catch (err) {
+      console.error(err);
+      document.getElementById('btc-data').innerHTML = '<tr><td colspan="5">Error loading data</td></tr>';
+    }
+  }
+
+  fetchAllRekuPrices();
+  setInterval(fetchAllRekuPrices, 15000);
+</script>
+  
+Show all Reku coins on the dashboard
