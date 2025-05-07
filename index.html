@@ -21,8 +21,8 @@
         <th>Indodax Price (IDR)</th>
         <th>Arbitrage Opportunity</th>
         <th>Gain (%)</th>
-        <th>Spread (Sell - Bid)</th>
-        <th>Spread (%)</th>
+        <th>Delta Bid-Sell (IDR)</th>
+        <th>% Potential Gain</th>
       </tr>
     </thead>
     <tbody id="btc-data">
@@ -33,6 +33,15 @@
 <script>
 const TELEGRAM_TOKEN = "8106353501:AAHJDQDCBLZX4_iYBV0ubbBxyDlh503K08M";
 const CHAT_ID = "7685414166";
+
+async function sendTelegramAlert(message) {
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+  await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: CHAT_ID, text: message })
+  });
+}
 
 async function fetchAndDisplay() {
   try {
@@ -48,33 +57,45 @@ async function fetchAndDisplay() {
 
     rekuData.forEach(coin => {
       const symbol = coin.code.toLowerCase() + '_idr';
-      const indodaxPrice = indodaxData.tickers[symbol]?.last
-        ? parseFloat(indodaxData.tickers[symbol].last)
-        : null;
+      const indodaxTicker = indodaxData.tickers[symbol];
+
       const rekuBid = parseFloat(coin.bid);
       const rekuAsk = parseFloat(coin.ask);
+      const indodaxBid = indodaxTicker?.buy ? parseFloat(indodaxTicker.buy) : null;
+      const indodaxAsk = indodaxTicker?.sell ? parseFloat(indodaxTicker.sell) : null;
+
       const rekuDisplay = 'Rp ' + rekuBid.toLocaleString();
-      const indodaxDisplay = indodaxPrice ? 'Rp ' + indodaxPrice.toLocaleString() : '-';
+      const indodaxDisplay = indodaxBid ? 'Rp ' + indodaxBid.toLocaleString() : '-';
 
-      let arbitrage = '-', gain = '-', spread = '-', spreadPct = '-';
-      if (indodaxPrice) {
-        const diff = indodaxPrice - rekuBid;
-        const percentage = Math.abs((diff / Math.min(rekuBid, indodaxPrice)) * 100).toFixed(2);
-        gain = percentage + '%';
+      let arbitrage = '-', gain = '-', delta = '-', gainPct = '-';
 
-        if (rekuBid < indodaxPrice) {
-          arbitrage = 'Buy at Reku, Sell at Indodax';
-        } else if (indodaxPrice < rekuBid) {
-          arbitrage = 'Buy at Indodax, Sell at Reku';
+      if (rekuBid && indodaxBid) {
+        let buyExchange, sellExchange;
+        let buySell, sellBid;
+
+        if (rekuAsk < indodaxBid) {
+          buyExchange = 'Reku';
+          sellExchange = 'Indodax';
+          buySell = rekuAsk;
+          sellBid = indodaxBid;
+        } else if (indodaxAsk < rekuBid) {
+          buyExchange = 'Indodax';
+          sellExchange = 'Reku';
+          buySell = indodaxAsk;
+          sellBid = rekuBid;
         }
 
-        gainers.push({ coin: coin.code, gain: parseFloat(percentage), arbitrage });
-      }
+        if (buySell && sellBid) {
+          const d = sellBid - buySell;
+          delta = 'Rp ' + d.toLocaleString();
+          gainPct = ((d / buySell) * 100).toFixed(2) + '%';
 
-      if (rekuAsk && rekuBid) {
-        const spreadValue = (rekuAsk - rekuBid);
-        spread = 'Rp ' + spreadValue.toLocaleString();
-        spreadPct = ((spreadValue / rekuBid) * 100).toFixed(2) + '%';
+          if (d > 0) {
+            arbitrage = `Buy at ${buyExchange}, Sell at ${sellExchange}`;
+            gain = gainPct;
+            gainers.push({ coin: coin.code, gain: parseFloat(gainPct), arbitrage });
+          }
+        }
       }
 
       html += `
@@ -84,24 +105,18 @@ async function fetchAndDisplay() {
           <td>${indodaxDisplay}</td>
           <td>${arbitrage}</td>
           <td>${gain}</td>
-          <td>${spread}</td>
-          <td>${spreadPct}</td>
+          <td>${delta}</td>
+          <td>${gainPct}</td>
         </tr>
       `;
     });
 
     document.getElementById('btc-data').innerHTML = html;
 
-    const topGainers = gainers
-      .filter(g => g.gain > 3)
-      .sort((a, b) => b.gain - a.gain)
-      .slice(0, 5);
-
+    const topGainers = gainers.filter(g => g.gain > 3).sort((a, b) => b.gain - a.gain).slice(0, 5);
     if (topGainers.length > 0) {
-      const message = topGainers.map(g =>
-        `🔥 ${g.coin}\nGain: ${g.gain.toFixed(2)}%\n${g.arbitrage}`
-      ).join('\n\n');
-      await sendTelegramAlert(`🚨 Top Arbitrage Gains Over 3%:\n\n${message}`);
+      const message = topGainers.map(g => `🔥 ${g.coin}\nGain: ${g.gain.toFixed(2)}%\n${g.arbitrage}`).join('\n\n');
+      await sendTelegramAlert(`🚨 Arbitrage Gains Over 3%:\n\n${message}`);
     }
 
   } catch (err) {
@@ -110,17 +125,8 @@ async function fetchAndDisplay() {
   }
 }
 
-async function sendTelegramAlert(message) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-  await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: CHAT_ID, text: message })
-  });
-}
-
 fetchAndDisplay();
-setInterval(fetchAndDisplay, 60000); // every 60 seconds
+setInterval(fetchAndDisplay, 60000);
 </script>
 </body>
 </html>
